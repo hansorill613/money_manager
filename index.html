@@ -5,11 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>소비기록</title>
     <style>
-        :root { --p: #4a90e2; --a: #ff5e57; --bg: #f8f9fa; --card: #ffffff; }
+        :root { --p: #4a90e2; --a: #ff5e57; --t: #2ecc71; --bg: #f8f9fa; --card: #ffffff; }
         body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #333; line-height: 1.5; }
         .card { background: var(--card); padding: 20px; border-radius: 15px; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
         h2 { font-size: 1.1rem; margin: 0 0 15px; color: #444; }
         
+        /* 상단 날짜 헤더 */
         .cal-header { background: var(--p); color: white; padding: 15px; border-radius: 15px; margin-bottom: 15px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
         .cal-container { display: none; background: white; color: #333; padding: 15px; border-radius: 12px; margin-top: 10px; }
         .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; text-align: center; margin-top: 10px; }
@@ -17,15 +18,23 @@
         .day.sel { background: var(--p); color: white; font-weight: bold; }
         .has-log::after { content: '●'; display: block; color: var(--a); font-size: 8px; margin-top: -4px; }
 
+        /* 입력 폼 */
         input, select { padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; width: 100%; box-sizing: border-box; margin-bottom: 10px; }
         button { padding: 14px; background: var(--p); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; }
         
+        .transfer-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.9rem; font-weight: bold; color: var(--p); }
+        .transfer-row input { width: auto; margin: 0; }
+        .bank-label { font-size: 0.8rem; color: #888; margin-bottom: 4px; display: block; }
+
+        /* 리스트 스타일 */
         .bank-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px dotted #eee; font-size: 0.95rem; }
         .sm-btn { padding: 4px 8px; font-size: 0.7rem; border-radius: 4px; border: 1px solid #ddd; background: white; color: #666; cursor: pointer; width: auto; font-weight: normal; }
         .log-item { padding: 15px 0; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
         .log-main-info { flex: 1; }
         .bank-tag { font-size: 0.75rem; color: #666; background: #eef2f6; padding: 2px 8px; border-radius: 4px; }
+        .bank-tag.t-tag { background: #e8f5e9; color: var(--t); }
         .amount-txt { color: var(--a); font-weight: bold; font-size: 1rem; }
+        .amount-txt.t-amt { color: var(--t); }
         .balance-flow { font-size: 0.8rem; color: #999; }
         .del-btn { background: none; border: 1px solid #ddd; color: #999; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; width: auto; margin-left: 10px; font-weight: normal; }
         .summary { margin-top: 15px; text-align: right; font-size: 0.9rem; color: #666; }
@@ -53,11 +62,25 @@
     </div>
 
     <div class="card">
-        <h2>💸 지출 기록</h2>
+        <h2>💸 기록하기</h2>
+        <div class="transfer-row">
+            <input type="checkbox" id="isT" onchange="changeMode()"> <label for="isT">이체</label>
+        </div>
+
+        <span class="bank-label" id="fromLabel">사용할 은행</span>
         <select id="targetBank"></select>
-        <input type="text" id="where" placeholder="어디에 쓰셨나요?">
+
+        <div id="toBankBox" style="display:none;">
+            <span class="bank-label">받을 은행</span>
+            <select id="toBank"></select>
+        </div>
+
+        <div id="whereBox">
+            <input type="text" id="where" placeholder="어디에 쓰셨나요?">
+        </div>
+
         <input type="number" id="amount" placeholder="금액">
-        <button onclick="saveLog()">기록하기</button>
+        <button onclick="saveLog()" id="mainBtn">기록하기</button>
     </div>
 
     <div class="card">
@@ -69,14 +92,13 @@
     </div>
 
 <script>
-    let data = JSON.parse(localStorage.getItem('hansol_v3')) || { banks: [], logs: {} };
+    let data = JSON.parse(localStorage.getItem('hansol_v5')) || { banks: [], logs: {} };
     let today = new Date();
     let selectedDate = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
     let viewDate = new Date(today.getFullYear(), today.getMonth(), 1);
 
     function init() {
-        const yS = document.getElementById('yS');
-        const mS = document.getElementById('mS');
+        const yS = document.getElementById('yS'), mS = document.getElementById('mS');
         for(let i=2025; i<=2027; i++) yS.innerHTML += `<option value="${i}">${i}년</option>`;
         for(let i=1; i<=12; i++) mS.innerHTML += `<option value="${i}">${i}월</option>`;
         yS.value = viewDate.getFullYear();
@@ -85,11 +107,18 @@
     }
 
     function toggleCal() {
-        const box = document.getElementById('calBox');
-        const arrow = document.getElementById('arrow');
+        const box = document.getElementById('calBox'), arrow = document.getElementById('arrow');
         const isHidden = box.style.display === 'none' || box.style.display === '';
         box.style.display = isHidden ? 'block' : 'none';
         arrow.innerText = isHidden ? '▲' : '▼';
+    }
+
+    function changeMode() {
+        const isT = document.getElementById('isT').checked;
+        document.getElementById('toBankBox').style.display = isT ? 'block' : 'none';
+        document.getElementById('whereBox').style.display = isT ? 'none' : 'block';
+        document.getElementById('fromLabel').innerText = isT ? '보내는 은행' : '사용할 은행';
+        document.getElementById('mainBtn').innerText = isT ? '이체 실행' : '기록하기';
     }
 
     function updateView() {
@@ -98,8 +127,7 @@
     }
 
     function render() {
-        const cal = document.getElementById('calendar');
-        cal.innerHTML = '';
+        const cal = document.getElementById('calendar'); cal.innerHTML = '';
         const y = viewDate.getFullYear(), m = viewDate.getMonth();
         const first = new Date(y, m, 1).getDay(), last = new Date(y, m+1, 0).getDate();
         for(let i=0; i<first; i++) cal.innerHTML += '<div></div>';
@@ -109,67 +137,111 @@
             cal.innerHTML += `<div class="day ${s===selectedDate?'sel':''} ${hasLog}" onclick="event.stopPropagation();selectDate('${s}')">${i}</div>`;
         }
 
-        const bList = document.getElementById('bankList'), bSelect = document.getElementById('targetBank');
-        bList.innerHTML = ''; bSelect.innerHTML = '';
+        const bList = document.getElementById('bankList'), bSel = document.getElementById('targetBank'), tSel = document.getElementById('toBank');
+        bList.innerHTML = ''; bSel.innerHTML = ''; tSel.innerHTML = '';
         data.banks.forEach((b, i) => {
             bList.innerHTML += `<div class="bank-item"><span>${b.name}: <strong>${b.balance.toLocaleString()}원</strong></span><button class="sm-btn" onclick="editBank(${i})">수정</button></div>`;
-            bSelect.innerHTML += `<option value="${i}">${b.name}</option>`;
+            bSel.innerHTML += `<option value="${i}">${b.name}</option>`;
+            tSel.innerHTML += `<option value="${i}">${b.name}</option>`;
         });
 
         document.getElementById('curDateDisp').innerText = selectedDate;
         document.getElementById('selectedTitle').innerText = selectedDate;
-        const lList = document.getElementById('logsList');
-        lList.innerHTML = '';
+        const lList = document.getElementById('logsList'); lList.innerHTML = '';
         let dSum = 0, mSum = 0;
         const mPrefix = `${y}-${String(m+1).padStart(2,'0')}`;
 
         Object.keys(data.logs).forEach(date => {
-            data.logs[date].forEach((log, index) => {
-                if(date.startsWith(mPrefix)) mSum += log.amount;
+            data.logs[date].forEach((log, idx) => {
+                if(date.startsWith(mPrefix) && !log.isT) mSum += log.amount;
                 if(date === selectedDate) {
-                    dSum += log.amount;
-                    lList.innerHTML += `<div class="log-item"><div class="log-main-info"><div class="log-header" style="margin-bottom: 12px;"><span class="bank-tag">${log.bankName}</span>&nbsp;<span class="amount-txt">-${log.amount.toLocaleString()}원</span></div><div><strong>${log.where}</strong> <span class="balance-flow">${log.before.toLocaleString()} → ${log.after.toLocaleString()}</span></div></div><button class="del-btn" onclick="deleteLog('${date}', ${index})">삭제</button></div>`;
+                    if(!log.isT) dSum += log.amount;
+                    lList.innerHTML += `<div class="log-item">
+                        <div class="log-main-info">
+                            <div style="margin-bottom:8px;">
+                                <span class="bank-tag ${log.isT?'t-tag':''}">${log.isT ? log.bankName+' → '+log.toName : log.bankName}</span>
+                                <span class="amount-txt ${log.isT?'t-amt':''}">${log.isT ? '⇄ ' : '-'}${log.amount.toLocaleString()}원</span>
+                            </div>
+                            <div><strong>${log.where}</strong> <span class="balance-flow">${log.before.toLocaleString()} → ${log.after.toLocaleString()}</span></div>
+                        </div>
+                        <button class="del-btn" onclick="deleteLog('${date}', ${idx})">삭제</button>
+                    </div>`;
                 }
             });
         });
-        if(!lList.innerHTML) lList.innerHTML = '<p style="text-align:center;color:#999;padding:10px;">기록 없음</p>';
+        if(!lList.innerHTML) lList.innerHTML = '<p style="text-align:center;color:#999;padding:10px;">내역이 없어요.</p>';
         document.getElementById('daySum').innerText = dSum.toLocaleString();
         document.getElementById('monthSum').innerText = mSum.toLocaleString();
-        localStorage.setItem('hansol_v3', JSON.stringify(data));
+        localStorage.setItem('hansol_v5', JSON.stringify(data));
     }
 
     function selectDate(s) { selectedDate = s; render(); toggleCal(); }
 
     function addBank() {
-        const n = prompt('은행을 적어주세요'), v = parseInt(prompt('현재 잔고는 얼마인가요?')) || 0;
+        const n = prompt('은행 이름'), v = parseInt(prompt('잔액')) || 0;
         if(n) { data.banks.push({ name: n, balance: v }); render(); }
     }
 
     function editBank(i) {
         const b = data.banks[i];
-        const n = prompt('수정할 이름을 적어주세요', b.name), v = prompt('수정할 잔액은 얼마인가요?', b.balance);
+        const n = prompt('이름 수정', b.name), v = prompt('잔액 수정', b.balance);
         if(n !== null) { data.banks[i] = { name: n, balance: parseInt(v)||0 }; render(); }
     }
 
     function saveLog() {
-        const bIdx = document.getElementById('targetBank').value, w = document.getElementById('where').value, a = parseInt(document.getElementById('amount').value);
-        if(data.banks.length === 0 || !w || isNaN(a)) return alert('정보를 입력해주세요');
-        
-        const b = data.banks[bIdx], bf = b.balance;
-        b.balance -= a;
+        const bIdx = document.getElementById('targetBank').value, 
+              tIdx = document.getElementById('toBank').value,
+              isT = document.getElementById('isT').checked,
+              w = document.getElementById('where').value, 
+              a = parseInt(document.getElementById('amount').value);
+
+        if(data.banks.length === 0 || isNaN(a)) return alert('정보를 입력해주세요!');
+        if(isT && bIdx === tIdx) return alert('같은 은행으로는 이체할 수 없어요.');
+
+        const fromB = data.banks[bIdx], bf = fromB.balance;
+
+        // 잔액 부족 체크
+        if(fromB.balance < a) {
+            return alert('잔액이 부족합니다.');
+        }
+
         if(!data.logs[selectedDate]) data.logs[selectedDate] = [];
-        data.logs[selectedDate].push({ bankName: b.name, where: w, amount: a, before: bf, after: b.balance });
-        
+
+        if(isT) {
+            const toB = data.banks[tIdx];
+            fromB.balance -= a;
+            toB.balance += a;
+            data.logs[selectedDate].push({ 
+                isT:true, 
+                bankName:fromB.name, 
+                toName:toB.name, 
+                where:'이체', 
+                amount:a, 
+                before:bf, 
+                after:fromB.balance 
+            });
+        } else {
+            if(!w) return alert('내용을 입력해주세요.');
+            fromB.balance -= a;
+            data.logs[selectedDate].push({ isT:false, bankName:fromB.name, where:w, amount:a, before:bf, after:fromB.balance });
+        }
+
         document.getElementById('where').value = '';
         document.getElementById('amount').value = '';
         render();
     }
 
-    function deleteLog(date, index) {
-        const log = data.logs[date][index];
-        const bank = data.banks.find(b => b.name === log.bankName);
-        if(bank) bank.balance += log.amount;
-        data.logs[date].splice(index, 1);
+    function deleteLog(date, idx) {
+        const log = data.logs[date][idx];
+        const fromB = data.banks.find(b => b.name === log.bankName);
+        if(log.isT) {
+            const toB = data.banks.find(b => b.name === log.toName);
+            if(fromB) fromB.balance += log.amount;
+            if(toB) toB.balance -= log.amount;
+        } else {
+            if(fromB) fromB.balance += log.amount;
+        }
+        data.logs[date].splice(idx, 1);
         render();
     }
 
