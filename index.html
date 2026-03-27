@@ -5,12 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>소비기록</title>
     <style>
-        :root { --p: #4a90e2; --a: #ff5e57; --t: #2ecc71; --bg: #f8f9fa; --card: #ffffff; }
+        :root { --p: #4a90e2; --a: #ff5e57; --t: #2ecc71; --in: #3498db; --bg: #f8f9fa; --card: #ffffff; }
         body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #333; line-height: 1.5; }
         .card { background: var(--card); padding: 20px; border-radius: 15px; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
         h2 { font-size: 1.1rem; margin: 0 0 15px; color: #444; }
         
-        /* 상단 날짜 헤더 */
         .cal-header { background: var(--p); color: white; padding: 15px; border-radius: 15px; margin-bottom: 15px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
         .cal-container { display: none; background: white; color: #333; padding: 15px; border-radius: 12px; margin-top: 10px; }
         .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; text-align: center; margin-top: 10px; }
@@ -18,23 +17,28 @@
         .day.sel { background: var(--p); color: white; font-weight: bold; }
         .has-log::after { content: '●'; display: block; color: var(--a); font-size: 8px; margin-top: -4px; }
 
-        /* 입력 폼 */
         input, select { padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; width: 100%; box-sizing: border-box; margin-bottom: 10px; }
         button { padding: 14px; background: var(--p); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; }
         
-        .transfer-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.9rem; font-weight: bold; color: var(--p); }
-        .transfer-row input { width: auto; margin: 0; }
+        /* 타입 선택 스타일 */
+        .type-selector { display: flex; gap: 10px; margin-bottom: 15px; }
+        .type-btn { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer; font-size: 0.85rem; text-align: center; }
+        .type-btn.active { background: var(--p); color: white; border-color: var(--p); font-weight: bold; }
         .bank-label { font-size: 0.8rem; color: #888; margin-bottom: 4px; display: block; }
 
-        /* 리스트 스타일 */
         .bank-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px dotted #eee; font-size: 0.95rem; }
         .sm-btn { padding: 4px 8px; font-size: 0.7rem; border-radius: 4px; border: 1px solid #ddd; background: white; color: #666; cursor: pointer; width: auto; font-weight: normal; }
         .log-item { padding: 15px 0; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
         .log-main-info { flex: 1; }
+        
+        /* 태그 및 금액 색상 */
         .bank-tag { font-size: 0.75rem; color: #666; background: #eef2f6; padding: 2px 8px; border-radius: 4px; }
         .bank-tag.t-tag { background: #e8f5e9; color: var(--t); }
+        .bank-tag.in-tag { background: #e3f2fd; color: var(--in); }
         .amount-txt { color: var(--a); font-weight: bold; font-size: 1rem; }
         .amount-txt.t-amt { color: var(--t); }
+        .amount-txt.in-amt { color: var(--in); }
+
         .balance-flow { font-size: 0.8rem; color: #999; }
         .del-btn { background: none; border: 1px solid #ddd; color: #999; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; width: auto; margin-left: 10px; font-weight: normal; }
         .summary { margin-top: 15px; text-align: right; font-size: 0.9rem; color: #666; }
@@ -63,8 +67,10 @@
 
     <div class="card">
         <h2>💸 기록하기</h2>
-        <div class="transfer-row">
-            <input type="checkbox" id="isT" onchange="changeMode()"> <label for="isT">이체</label>
+        <div class="type-selector">
+            <div class="type-btn active" id="btn-out" onclick="setMode('OUT')">지출</div>
+            <div class="type-btn" id="btn-trans" onclick="setMode('TRANS')">이체</div>
+            <div class="type-btn" id="btn-in" onclick="setMode('IN')">입금</div>
         </div>
 
         <span class="bank-label" id="fromLabel">사용할 은행</span>
@@ -75,10 +81,7 @@
             <select id="toBank"></select>
         </div>
 
-        <div id="whereBox">
-            <input type="text" id="where" placeholder="어디에 쓰셨나요?">
-        </div>
-
+        <input type="text" id="where" placeholder="내용을 입력하세요">
         <input type="number" id="amount" placeholder="금액">
         <button onclick="saveLog()" id="mainBtn">기록하기</button>
     </div>
@@ -92,10 +95,11 @@
     </div>
 
 <script>
-    let data = JSON.parse(localStorage.getItem('hansol_v5')) || { banks: [], logs: {} };
+    let data = JSON.parse(localStorage.getItem('hansol_v6')) || { banks: [], logs: {} };
     let today = new Date();
     let selectedDate = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
     let viewDate = new Date(today.getFullYear(), today.getMonth(), 1);
+    let currentMode = 'OUT'; // 기본 모드는 지출
 
     function init() {
         const yS = document.getElementById('yS'), mS = document.getElementById('mS');
@@ -113,12 +117,16 @@
         arrow.innerText = isHidden ? '▲' : '▼';
     }
 
-    function changeMode() {
-        const isT = document.getElementById('isT').checked;
-        document.getElementById('toBankBox').style.display = isT ? 'block' : 'none';
-        document.getElementById('whereBox').style.display = isT ? 'none' : 'block';
-        document.getElementById('fromLabel').innerText = isT ? '보내는 은행' : '사용할 은행';
-        document.getElementById('mainBtn').innerText = isT ? '이체 실행' : '기록하기';
+    function setMode(mode) {
+        currentMode = mode;
+        const btns = document.querySelectorAll('.type-btn');
+        btns.forEach(btn => btn.classList.remove('active'));
+        document.getElementById('btn-' + mode.toLowerCase()).classList.add('active');
+
+        document.getElementById('toBankBox').style.display = (mode === 'TRANS') ? 'block' : 'none';
+        document.getElementById('fromLabel').innerText = (mode === 'TRANS') ? '보내는 은행' : (mode === 'IN' ? '입금될 은행' : '사용할 은행');
+        document.getElementById('where').style.display = (mode === 'TRANS') ? 'none' : 'block';
+        document.getElementById('mainBtn').innerText = (mode === 'TRANS') ? '이체 실행' : (mode === 'IN' ? '입금 기록' : '기록하기');
     }
 
     function updateView() {
@@ -153,14 +161,20 @@
 
         Object.keys(data.logs).forEach(date => {
             data.logs[date].forEach((log, idx) => {
-                if(date.startsWith(mPrefix) && !log.isT) mSum += log.amount;
+                if(date.startsWith(mPrefix) && log.type === 'OUT') mSum += log.amount;
                 if(date === selectedDate) {
-                    if(!log.isT) dSum += log.amount;
+                    if(log.type === 'OUT') dSum += log.amount;
+                    
+                    let tagClass = log.type === 'TRANS' ? 't-tag' : (log.type === 'IN' ? 'in-tag' : '');
+                    let amtClass = log.type === 'TRANS' ? 't-amt' : (log.type === 'IN' ? 'in-amt' : '');
+                    let prefix = log.type === 'TRANS' ? '⇄ ' : (log.type === 'IN' ? '+ ' : '- ');
+                    let bankText = log.type === 'TRANS' ? `${log.bankName} → ${log.toName}` : log.bankName;
+
                     lList.innerHTML += `<div class="log-item">
                         <div class="log-main-info">
                             <div style="margin-bottom:8px;">
-                                <span class="bank-tag ${log.isT?'t-tag':''}">${log.isT ? log.bankName+' → '+log.toName : log.bankName}</span>
-                                <span class="amount-txt ${log.isT?'t-amt':''}">${log.isT ? '⇄ ' : '-'}${log.amount.toLocaleString()}원</span>
+                                <span class="bank-tag ${tagClass}">${bankText}</span>
+                                <span class="amount-txt ${amtClass}">${prefix}${log.amount.toLocaleString()}원</span>
                             </div>
                             <div><strong>${log.where}</strong> <span class="balance-flow">${log.before.toLocaleString()} → ${log.after.toLocaleString()}</span></div>
                         </div>
@@ -172,7 +186,7 @@
         if(!lList.innerHTML) lList.innerHTML = '<p style="text-align:center;color:#999;padding:10px;">내역이 없어요.</p>';
         document.getElementById('daySum').innerText = dSum.toLocaleString();
         document.getElementById('monthSum').innerText = mSum.toLocaleString();
-        localStorage.setItem('hansol_v5', JSON.stringify(data));
+        localStorage.setItem('hansol_v6', JSON.stringify(data));
     }
 
     function selectDate(s) { selectedDate = s; render(); toggleCal(); }
@@ -191,39 +205,32 @@
     function saveLog() {
         const bIdx = document.getElementById('targetBank').value, 
               tIdx = document.getElementById('toBank').value,
-              isT = document.getElementById('isT').checked,
               w = document.getElementById('where').value, 
               a = parseInt(document.getElementById('amount').value);
 
         if(data.banks.length === 0 || isNaN(a)) return alert('정보를 입력해주세요!');
-        if(isT && bIdx === tIdx) return alert('같은 은행으로는 이체할 수 없어요.');
-
+        
         const fromB = data.banks[bIdx], bf = fromB.balance;
-
-        // 잔액 부족 체크
-        if(fromB.balance < a) {
-            return alert('잔액이 부족합니다.');
-        }
-
         if(!data.logs[selectedDate]) data.logs[selectedDate] = [];
 
-        if(isT) {
+        if(currentMode === 'TRANS') {
+            if(bIdx === tIdx) return alert('같은 은행으로는 이체할 수 없어요.');
+            if(fromB.balance < a) return alert('잔액이 부족합니다.');
             const toB = data.banks[tIdx];
             fromB.balance -= a;
             toB.balance += a;
-            data.logs[selectedDate].push({ 
-                isT:true, 
-                bankName:fromB.name, 
-                toName:toB.name, 
-                where:'이체', 
-                amount:a, 
-                before:bf, 
-                after:fromB.balance 
-            });
-        } else {
-            if(!w) return alert('내용을 입력해주세요.');
+            data.logs[selectedDate].push({ type:'TRANS', bankName:fromB.name, toName:toB.name, where:'이체', amount:a, before:bf, after:fromB.balance });
+        } 
+        else if(currentMode === 'IN') {
+            if(!w) return alert('입금 내용을 입력해주세요.');
+            fromB.balance += a;
+            data.logs[selectedDate].push({ type:'IN', bankName:fromB.name, where:w, amount:a, before:bf, after:fromB.balance });
+        }
+        else { // OUT (지출)
+            if(!w) return alert('지출 내용을 입력해주세요.');
+            if(fromB.balance < a) return alert('잔액이 부족합니다.');
             fromB.balance -= a;
-            data.logs[selectedDate].push({ isT:false, bankName:fromB.name, where:w, amount:a, before:bf, after:fromB.balance });
+            data.logs[selectedDate].push({ type:'OUT', bankName:fromB.name, where:w, amount:a, before:bf, after:fromB.balance });
         }
 
         document.getElementById('where').value = '';
@@ -234,10 +241,12 @@
     function deleteLog(date, idx) {
         const log = data.logs[date][idx];
         const fromB = data.banks.find(b => b.name === log.bankName);
-        if(log.isT) {
+        if(log.type === 'TRANS') {
             const toB = data.banks.find(b => b.name === log.toName);
             if(fromB) fromB.balance += log.amount;
             if(toB) toB.balance -= log.amount;
+        } else if(log.type === 'IN') {
+            if(fromB) fromB.balance -= log.amount;
         } else {
             if(fromB) fromB.balance += log.amount;
         }
